@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { createContext } from 'react';
 import PropTypes from 'prop-types';
 import warning from 'warning';
 import {
@@ -126,7 +126,7 @@ function adaptMouse(event) {
 export function getDomTreeShapes(element, rootNode) {
   let domTreeShapes = [];
 
-  while (element && element !== rootNode && element !== document.body) {
+  while (element && element !== rootNode) {
     // We reach a Swipeable View, no need to look higher in the dom tree.
     if (element.hasAttribute('data-swipeable')) {
       break;
@@ -179,9 +179,7 @@ export function findNativeHandler(params) {
       goingForward = !goingForward;
     }
 
-    // scrollTop is not always be an integer.
-    // https://github.com/jquery/api.jquery.com/issues/608
-    const scrollPosition = Math.round(shape[axisProperties.scrollPosition[axis]]);
+    const scrollPosition = shape[axisProperties.scrollPosition[axis]];
 
     const areNotAtStart = scrollPosition > 0;
     const areNotAtEnd =
@@ -196,6 +194,8 @@ export function findNativeHandler(params) {
     return false;
   });
 }
+
+export const swipeableViewsContext = createContext();
 
 class SwipeableViews extends React.Component {
   rootNode = null;
@@ -249,16 +249,6 @@ class SwipeableViews extends React.Component {
       displaySameSlide: true,
     };
     this.setIndexCurrent(props.index);
-  }
-
-  getChildContext() {
-    return {
-      swipeableViews: {
-        slideUpdateHeight: () => {
-          this.updateHeight();
-        },
-      },
-    };
   }
 
   componentDidMount() {
@@ -325,6 +315,14 @@ class SwipeableViews extends React.Component {
     this.transitionListener.remove();
     this.touchMoveListener.remove();
     clearTimeout(this.firstRenderTimeout);
+  }
+
+  getSwipeableViewsContext() {
+    return {
+      slideUpdateHeight: () => {
+        this.updateHeight();
+      },
+    };
   }
 
   setIndexCurrent(indexCurrent) {
@@ -784,57 +782,61 @@ So animateHeight is most likely having no effect at all.`,
       containerStyle.height = heightLatest;
     }
 
+    const SwipeableViewsProvider = swipeableViewsContext.Provider;
+
     return (
-      <div
-        ref={this.setRootNode}
-        style={Object.assign({}, axisProperties.root[axis], style)}
-        {...other}
-        {...touchEvents}
-        {...mouseEvents}
-        onScroll={this.handleScroll}
-      >
+      <SwipeableViewsProvider value={this.getSwipeableViewsContext()}>
         <div
-          ref={this.setContainerNode}
-          style={Object.assign({}, containerStyle, styles.container, containerStyleProp)}
-          className="react-swipeable-view-container"
+          ref={this.setRootNode}
+          style={Object.assign({}, axisProperties.root[axis], style)}
+          {...other}
+          {...touchEvents}
+          {...mouseEvents}
+          onScroll={this.handleScroll}
         >
-          {React.Children.map(children, (child, indexChild) => {
-            if (renderOnlyActive && indexChild !== indexLatest) {
-              return null;
-            }
-
-            warning(
-              React.isValidElement(child),
-              `react-swipeable-view: one of the children provided is invalid: ${child}.
-We are expecting a valid React Element`,
-            );
-
-            let ref;
-            let hidden = true;
-
-            if (indexChild === indexLatest) {
-              hidden = false;
-
-              if (animateHeight) {
-                ref = this.setActiveSlide;
-                slideStyle.overflowY = 'hidden';
+          <div
+            ref={this.setContainerNode}
+            style={Object.assign({}, containerStyle, styles.container, containerStyleProp)}
+            className="react-swipeable-view-container"
+          >
+            {React.Children.map(children, (child, indexChild) => {
+              if (renderOnlyActive && indexChild !== indexLatest) {
+                return null;
               }
-            }
 
-            return (
-              <div
-                ref={ref}
-                style={slideStyle}
-                className={slideClassName}
-                aria-hidden={hidden}
-                data-swipeable="true"
-              >
-                {child}
-              </div>
-            );
-          })}
+              warning(
+                React.isValidElement(child),
+                `react-swipeable-view: one of the children provided is invalid: ${child}.
+  We are expecting a valid React Element`,
+              );
+
+              let ref;
+              let hidden = true;
+
+              if (indexChild === indexLatest) {
+                hidden = false;
+
+                if (animateHeight) {
+                  ref = this.setActiveSlide;
+                  slideStyle.overflowY = 'hidden';
+                }
+              }
+
+              return (
+                <div
+                  ref={ref}
+                  style={slideStyle}
+                  className={slideClassName}
+                  aria-hidden={hidden}
+                  data-swipeable="true"
+                >
+                  {child}
+                </div>
+              );
+            })}
+          </div>
         </div>
-      </div>
+      </SwipeableViewsProvider>
     );
   }
 }
@@ -1016,12 +1018,6 @@ SwipeableViews.defaultProps = {
     delay: '0s',
   },
   resistance: false,
-};
-
-SwipeableViews.childContextTypes = {
-  swipeableViews: PropTypes.shape({
-    slideUpdateHeight: PropTypes.func,
-  }),
 };
 
 export default SwipeableViews;
